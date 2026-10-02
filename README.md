@@ -50,11 +50,23 @@ It is a single HTML file written in plain HTML, CSS and JavaScript. It loads Tai
 
 ---
 
-## Spatial reference
+## Spatial Reference and Calibration Concept
 
-The demonstration uses a common world coordinate system relating the camera, target environment and fire monitor.
+The demonstration uses a common world coordinate system to relate the camera, target environment and fire monitor.
 
-In a physical installation, such a reference frame could be established through laser-based spatial measurement or another suitable surveying and calibration method. The demonstration instead uses predefined synthetic positions and orientations.
+In a physical installation, this spatial reference would need to be established through suitable surveying, laser-based measurement, 3D scanning or other calibration methods. The purpose is to determine the spatial relationship between independently installed sensing and actuation devices and the relevant scene geometry.
+
+The concept can be separated into three stages:
+
+| Stage | Purpose |
+|---|---|
+| Spatial reference establishment | Measure the site geometry and determine the spatial relationship between camera, environment and actuator |
+| Runtime targeting | Use the calibrated camera geometry and scene constraints to convert an image target into a physical target position and actuator direction |
+| Spatial reference maintenance | Periodically verify the spatial relationship and recalibrate when equipment or scene geometry changes |
+
+In this demonstration, these measurements are represented by predefined synthetic positions and orientations rather than real survey or calibration data.
+
+The key principle is that **spatial calibration establishes the reference that connects perception to physical action**. The same principle applies to other distributed sensor-to-actuator systems where sensing and actuation are physically separated.
 
 ---
 
