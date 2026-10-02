@@ -1,0 +1,910 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spatially-Aware Target Control Simulation</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=JetBrains+Mono:wght@400;700&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #0f172a; color: #f8fafc; overflow: auto; }
+        @media (min-width: 768px) { body { overflow: hidden; } }
+        .mono { font-family: 'JetBrains Mono', monospace; }
+        
+        .panel { background: #1e293b; border: 1px solid #334155; border-radius: 0.5rem; display: flex; flex-direction: column; overflow: hidden; position: relative; }
+        @media (max-width: 767px) { .panel { min-height: 280px; } }
+        .canvas-container { flex: 1; position: relative; overflow: hidden; background: #020617; }
+        #containerUV { cursor: crosshair; }
+        canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+        
+        .badge { position: absolute; top: 8px; left: 8px; background: rgba(15, 23, 42, 0.85); padding: 4px 8px; border-radius: 4px; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.05em; color: #94a3b8; border: 1px solid #334155; pointer-events: none; backdrop-filter: blur(2px); z-index: 10; text-transform: uppercase; }
+        
+        .sidebar-scroll { overflow-y: auto; }
+        .sidebar-scroll::-webkit-scrollbar { width: 6px; }
+        .sidebar-scroll::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+        
+        input[type=range] { accent-color: #10b981; }
+        input[type=number] { background: #0f172a; border: 1px solid #334155; color: #38bdf8; padding: 2px 4px; border-radius: 4px; width: 100%; font-family: 'JetBrains Mono', monospace; font-size: 0.75rem; outline: none; }
+        input[type=number]:focus { border-color: #10b981; }
+        input[type=number].invalid { border-color: #f43f5e; color: #fda4af; }
+    </style>
+</head>
+<body class="min-h-screen md:h-screen flex flex-col">
+
+    <header class="bg-slate-900 border-b border-slate-800 p-3 shrink-0 flex justify-between items-center z-20 shadow-md">
+        <div>
+            <h1 class="text-base font-bold text-emerald-400 tracking-wide">Spatially-Aware Target Control</h1>
+            <p class="text-[10px] text-slate-400">Target locked on Z=0, physical position invariant during camera re-orientations.</p>
+        </div>
+        <div id="statusBadge" class="px-3 py-1 text-xs font-bold rounded bg-emerald-900/50 text-emerald-400 border border-emerald-800 transition-colors duration-300">SYSTEM READY</div>
+    </header>
+
+    <div class="flex flex-col md:flex-row flex-1 md:overflow-hidden">
+        <aside class="order-2 md:order-1 w-full md:w-[380px] bg-slate-900 md:flex-shrink-0 sidebar-scroll flex flex-col md:border-r border-t md:border-t-0 border-slate-800 z-10 shadow-xl">
+            <div class="p-4 space-y-4">
+                
+                <!-- Map Zoom Control -->
+                <div class="bg-slate-800/40 border border-slate-700/50 rounded p-3">
+                    <h2 class="text-[10px] font-bold text-sky-400 uppercase tracking-wider mb-2">Global Map Zoom</h2>
+                    <div class="flex items-center gap-2">
+                        <label class="text-[9px] text-slate-400 w-16">Magnify</label>
+                        <input type="range" id="cfgMapZoom" min="0.5" max="5.0" step="0.1" value="1.0" class="flex-1 h-1">
+                        <span id="lblMapZoom" class="text-[10px] mono text-sky-400 w-8 text-right">1.0x</span>
+                    </div>
+                </div>
+
+                <!-- Camera Settings -->
+                <div class="bg-slate-800/40 border border-slate-700/50 rounded p-3">
+                    <h2 class="text-[10px] font-bold text-emerald-500 uppercase tracking-wider mb-2">Camera Parameters</h2>
+                    <div class="grid grid-cols-3 gap-2 mb-2">
+                        <div><label class="text-[9px] text-slate-400 block mb-1">Res W (px)</label><input type="number" id="cfgCamW" value="1280" step="10"></div>
+                        <div><label class="text-[9px] text-slate-400 block mb-1">Res H (px)</label><input type="number" id="cfgCamH" value="720" step="10"></div>
+                        <div><label class="text-[9px] text-slate-400 block mb-1">H-FOV (°)</label><input type="number" id="cfgCamFOV" value="70" step="1"></div>
+                    </div>
+                    <div class="grid grid-cols-3 gap-2 mb-2">
+                        <div><label class="text-[9px] text-slate-400 block mb-1">Pos X (m)</label><input type="number" id="cfgCamX" value="5" step="0.5"></div>
+                        <div><label class="text-[9px] text-slate-400 block mb-1">Pos Y (m)</label><input type="number" id="cfgCamY" value="8" step="0.5"></div>
+                        <div><label class="text-[9px] text-slate-400 block mb-1">Pos Z (m)</label><input type="number" id="cfgCamZ" value="8" step="0.5"></div>
+                    </div>
+                    <div class="space-y-2 mt-3">
+                        <div class="flex items-center gap-2">
+                            <label class="text-[9px] text-slate-400 w-12">Yaw</label>
+                            <input type="range" id="cfgCamYaw" min="-180" max="180" value="25" class="flex-1 h-1">
+                            <span class="text-[10px] mono w-8 text-right text-emerald-400" id="lblCamYaw">25°</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <label class="text-[9px] text-slate-400 w-12">Pitch</label>
+                            <input type="range" id="cfgCamPitch" min="-90" max="90" value="-25" class="flex-1 h-1">
+                            <span class="text-[10px] mono w-8 text-right text-emerald-400" id="lblCamPitch">-25°</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Monitor Settings -->
+                <div class="bg-slate-800/40 border border-slate-700/50 rounded p-3">
+                    <h2 class="text-[10px] font-bold text-blue-500 uppercase tracking-wider mb-2">Fire Monitor Parameters</h2>
+                    <p class="text-[8px] text-slate-500 mb-2">Zero pan = +X. Pan is counter-clockwise seen from above; tilt is positive upward.</p>
+                    <div class="grid grid-cols-3 gap-2">
+                        <div><label class="text-[9px] text-slate-400 block mb-1">Pos X (m)</label><input type="number" id="cfgMonX" value="35" step="0.5"></div>
+                        <div><label class="text-[9px] text-slate-400 block mb-1">Pos Y (m)</label><input type="number" id="cfgMonY" value="10" step="0.5"></div>
+                        <div><label class="text-[9px] text-slate-400 block mb-1">Pos Z (m)</label><input type="number" id="cfgMonZ" value="6" step="0.5"></div>
+                    </div>
+                </div>
+
+                <!-- Target Constraint -->
+                <div class="bg-slate-800/40 border border-slate-700/50 rounded p-3">
+                    <h2 class="text-[10px] font-bold text-rose-500 uppercase tracking-wider mb-1">Target Object Height</h2>
+                    <p class="text-[8px] text-slate-500 mb-2">The clicked pixel marks the footprint on Z=0. The target is that footprint extruded upwards.</p>
+                    <div class="flex items-center gap-2">
+                        <label class="text-[9px] text-slate-400 w-24">Height (Z)</label>
+                        <input type="number" id="cfgTargetVal" value="2" step="0.5" class="flex-1">
+                        <span class="text-[9px] text-slate-500">meters</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-slate-950 p-4 space-y-4 shadow-[0_-4px_10px_rgba(0,0,0,0.3)] mt-auto border-t border-slate-800">
+                
+                <!-- Visibility Validation -->
+                <div class="bg-slate-900 border border-slate-800 rounded p-2 flex justify-between items-center">
+                    <span class="text-[9px] text-slate-400 uppercase font-bold">3D FOV Visibility</span>
+                    <span id="resVis" class="text-[10px] font-bold px-2 py-0.5 rounded bg-slate-800 text-slate-500">--</span>
+                </div>
+
+                <div class="bg-slate-900 border border-slate-800 rounded p-2">
+                    <div class="flex justify-between items-center mb-1">
+                        <span class="text-[9px] text-slate-400 font-bold uppercase">Footprint px</span>
+                        <span class="text-[9px] font-bold text-emerald-400 mono" id="resPixel">--</span>
+                    </div>
+                    <div class="flex justify-between items-center mb-2">
+                        <span class="text-[9px] text-slate-400 font-bold uppercase">Target px</span>
+                        <span class="text-[9px] font-bold text-rose-400 mono" id="resPixelTgt">--</span>
+                    </div>
+                    <div class="grid grid-cols-3 gap-1 text-center">
+                        <div class="bg-slate-950 rounded p-1"><div class="text-[8px] text-slate-500">X (m)</div><div class="text-xs font-bold text-white mono" id="resWorldX">--</div></div>
+                        <div class="bg-slate-950 rounded p-1"><div class="text-[8px] text-slate-500">Y (m)</div><div class="text-xs font-bold text-white mono" id="resWorldY">--</div></div>
+                        <div class="bg-slate-950 rounded p-1"><div class="text-[8px] text-slate-500">Z (m)</div><div class="text-xs font-bold text-white mono" id="resWorldZ">--</div></div>
+                    </div>
+                </div>
+
+                <div class="bg-gradient-to-r from-blue-900/30 to-slate-900 border border-blue-800/50 rounded p-2">
+                    <span class="text-[9px] text-blue-400 font-bold uppercase block mb-2">Actuator Command</span>
+                    <div class="grid grid-cols-2 gap-y-3">
+                        <div class="text-center border-r border-slate-800">
+                            <span class="text-[8px] text-slate-500 font-bold uppercase tracking-widest block">Pan</span>
+                            <span class="text-lg text-white font-black mono drop-shadow-[0_0_8px_rgba(59,130,246,0.6)]" id="resPan">--°</span>
+                        </div>
+                        <div class="text-center">
+                            <span class="text-[8px] text-slate-500 font-bold uppercase tracking-widest block">Tilt</span>
+                            <span class="text-lg text-white font-black mono drop-shadow-[0_0_8px_rgba(59,130,246,0.6)]" id="resTilt">--°</span>
+                        </div>
+                        <div class="text-center border-r border-slate-800">
+                            <span class="text-[8px] text-slate-500 font-bold uppercase tracking-widest block">Dist 3D</span>
+                            <span class="text-sm text-sky-300 font-bold mono" id="resDist">--m</span>
+                        </div>
+                        <div class="text-center">
+                            <span class="text-[8px] text-slate-500 font-bold uppercase tracking-widest block">Rel. H (ΔZ)</span>
+                            <span class="text-sm text-sky-300 font-bold mono" id="resRelH">--m</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="errorBox" class="hidden text-[10px] bg-rose-950/50 border border-rose-900 text-rose-400 p-2 rounded"></div>
+            </div>
+        </aside>
+
+        <main class="order-1 md:order-2 flex-1 p-3 grid grid-cols-1 md:grid-cols-2 md:grid-rows-2 gap-3 bg-slate-900">
+            <div class="panel group ring-1 ring-emerald-500/20 hover:ring-emerald-400/50 transition-all">
+                <div class="badge group-hover:bg-emerald-900/80 transition-colors">1. Camera View (Click to Localize)</div>
+                <div class="canvas-container" id="containerUV" title="Click or drag to localize ground hotspot">
+                    <canvas id="canvasUV"></canvas>
+                </div>
+            </div>
+            <div class="panel">
+                <div class="badge">2. Top View (World XY)</div>
+                <div class="canvas-container" id="containerXY">
+                    <canvas id="canvasXY"></canvas>
+                </div>
+            </div>
+            <div class="panel">
+                <div class="badge text-emerald-400 border-emerald-800">3. Camera Elevation Profile</div>
+                <div class="canvas-container" id="containerCamElev">
+                    <canvas id="canvasCamElev"></canvas>
+                </div>
+            </div>
+            <div class="panel">
+                <div class="badge text-blue-400 border-blue-800">4. Monitor Elevation Profile</div>
+                <div class="canvas-container" id="containerMonElev">
+                    <canvas id="canvasMonElev"></canvas>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const MathCore = {
+            deg2rad: d => d * Math.PI / 180.0,
+            rad2deg: r => r * 180.0 / Math.PI,
+            norm: v => Math.hypot(v[0], v[1], v[2]),
+            normalize: v => {
+                const mag = Math.hypot(v[0], v[1], v[2]);
+                return mag === 0 ? [0,0,0] : [v[0]/mag, v[1]/mag, v[2]/mag];
+            },
+            sub: (a, b) => [a[0]-b[0], a[1]-b[1], a[2]-b[2]],
+            matMulVec: (m, v) => [
+                m[0][0]*v[0] + m[0][1]*v[1] + m[0][2]*v[2],
+                m[1][0]*v[0] + m[1][1]*v[1] + m[1][2]*v[2],
+                m[2][0]*v[0] + m[2][1]*v[1] + m[2][2]*v[2]
+            ],
+            matMulMat: (a, b) => {
+                let res = [[0,0,0],[0,0,0],[0,0,0]];
+                for(let i=0; i<3; i++) {
+                    for(let j=0; j<3; j++) {
+                        res[i][j] = a[i][0]*b[0][j] + a[i][1]*b[1][j] + a[i][2]*b[2][j];
+                    }
+                }
+                return res;
+            },
+            transpose: (m) => [
+                [m[0][0], m[1][0], m[2][0]],
+                [m[0][1], m[1][1], m[2][1]],
+                [m[0][2], m[1][2], m[2][2]]
+            ]
+        };
+
+        function Rz(deg) { const r = MathCore.deg2rad(deg), c = Math.cos(r), s = Math.sin(r); return [[c,-s,0], [s,c,0], [0,0,1]]; }
+        function Ry(deg) { const r = MathCore.deg2rad(deg), c = Math.cos(r), s = Math.sin(r); return [[c,0,s], [0,1,0], [-s,0,c]]; }
+
+        const R_optical_to_body = [ [0,0,1], [-1,0,0], [0,-1,0] ];
+
+        class CameraModel {
+            constructor(pos, yaw, pitch, w, h, hfov) {
+                this.pos = pos; this.yaw = yaw; this.pitch = pitch;
+                this.W = w; this.H = h; this.hfov = hfov;
+                
+                const hfov_rad = MathCore.deg2rad(hfov);
+                this.fx = (w / 2) / Math.tan(hfov_rad / 2);
+                this.fy = this.fx; 
+                this.cx = w / 2; this.cy = h / 2;
+                
+                this.vfov_rad = 2 * Math.atan(Math.tan(hfov_rad / 2) * (h / w));
+                
+                const R_body_to_world = MathCore.matMulMat(Rz(yaw), Ry(-pitch)); 
+                this.R = MathCore.matMulMat(R_body_to_world, R_optical_to_body);
+                this.R_inv = MathCore.transpose(this.R);
+            }
+
+            getRay(u, v) {
+                const d_cam = MathCore.normalize([ (u - this.cx) / this.fx, (v - this.cy) / this.fy, 1.0 ]);
+                const d_world = MathCore.matMulVec(this.R, d_cam);
+                return { origin: this.pos, dir_world: d_world };
+            }
+
+            worldToCamera(p_world) {
+                const dp = MathCore.sub(p_world, this.pos);
+                return MathCore.matMulVec(this.R_inv, dp);
+            }
+
+            worldToPixel(p_world) {
+                const pc = this.worldToCamera(p_world);
+                if (pc[2] <= 0) return null; // Behind camera (or perfectly orthogonal)
+                const u = this.fx * (pc[0] / pc[2]) + this.cx;
+                const v = this.fy * (pc[1] / pc[2]) + this.cy;
+                return [u, v];
+            }
+
+            isPointInFOV(p_world) {
+                const uv = this.worldToPixel(p_world);
+                if (!uv) return false;
+                return (uv[0] >= 0 && uv[0] <= this.W && uv[1] >= 0 && uv[1] <= this.H);
+            }
+        }
+
+        class FireMonitorModel {
+            constructor(pos) { this.pos = pos; }
+            calculateAim(target_world) {
+                const dx = target_world[0] - this.pos[0];
+                const dy = target_world[1] - this.pos[1];
+                const dz = target_world[2] - this.pos[2];
+                const d_horiz = Math.hypot(dx, dy);
+                if (d_horiz < 1e-6) throw new Error("Target is directly above or below the monitor.");
+                const pan = MathCore.rad2deg(Math.atan2(dy, dx)); // Zero pan = +X, counter-clockwise seen from above
+                const tilt = MathCore.rad2deg(Math.atan2(dz, d_horiz));
+                return { pan, tilt, distance3d: Math.hypot(dx, dy, dz), d_horiz, relHeight: dz };
+            }
+        }
+
+        let State = {
+            camW: 1280, camH: 720, hfov: 70,
+            camPos: [5, 8, 8], camYaw: 25, camPitch: -25,
+            monPos: [35, 10, 6],
+            tgtVal: 2.0, 
+            
+            isTargetLocked: false,
+            u: 450, v: 350,                 // last clicked pixel (the observation)
+            
+            groundPoint: null,              // Always strictly Z=0 [X,Y,0]
+            targetWorld: null,              // Extruded target [X,Y,tgtVal]
+            footUV: null,                   // Image position of the ground footprint
+            tgtUV: null,                    // Image position of the extruded target
+            footInImage: false,
+            targetInFOV: false,
+            
+            mapZoom: 1.0,
+            camera: null, monitor: null, 
+            fovGroundPoly: [], aim: null,
+            obsError: null,                 // Error from the last click (localization)
+            aimError: null,                 // Error from the current Pan/Tilt calculation
+            error: null
+        };
+
+        function calculateSystem(isNewObservation = false) {
+            State.camera = new CameraModel(State.camPos, State.camYaw, State.camPitch, State.camW, State.camH, State.hfov);
+            State.monitor = new FireMonitorModel(State.monPos);
+            
+            // 1. Calculate Unbounded/Clipped FOV Footprint strictly on Z=0
+            State.fovGroundPoly = [];
+            const MAX_DIST = 1000; // Horizon clipping distance
+            const corners = [ [0,0], [State.camW, 0], [State.camW, State.camH], [0, State.camH] ];
+            for (let c of corners) {
+                const ray = State.camera.getRay(c[0], c[1]);
+                const hDirMag = Math.hypot(ray.dir_world[0], ray.dir_world[1]);
+                let pt = null;
+                
+                if (ray.dir_world[2] < -1e-6) {
+                    const t = (0 - ray.origin[2]) / ray.dir_world[2]; // Intersect Z=0
+                    const hDist = t * hDirMag;
+                    if (hDist > MAX_DIST) {
+                        const tc = MAX_DIST / hDirMag;
+                        pt = [ray.origin[0] + tc*ray.dir_world[0], ray.origin[1] + tc*ray.dir_world[1], 0];
+                    } else {
+                        pt = [ray.origin[0] + t*ray.dir_world[0], ray.origin[1] + t*ray.dir_world[1], 0];
+                    }
+                } else {
+                    // Sky ray -> clip to max visualization distance on Z=0 plane
+                    if (hDirMag > 1e-6) {
+                        const tc = MAX_DIST / hDirMag;
+                        pt = [ray.origin[0] + tc*ray.dir_world[0], ray.origin[1] + tc*ray.dir_world[1], 0];
+                    } else {
+                        pt = [ray.origin[0], ray.origin[1], 0]; 
+                    }
+                }
+                State.fovGroundPoly.push(pt);
+            }
+
+            // 2. Localization: only a click creates a new observation
+            if (isNewObservation) {
+                const activeRay = State.camera.getRay(State.u, State.v);
+                if (activeRay.dir_world[2] >= -1e-6) {
+                    State.obsError = "Camera ray points toward sky. Cannot localize ground.";
+                    State.isTargetLocked = false;
+                } else {
+                    const t = (0 - activeRay.origin[2]) / activeRay.dir_world[2]; // Intersect strictly on Z=0
+                    if (t <= 0) {
+                        State.obsError = "Intersection is behind camera.";
+                        State.isTargetLocked = false;
+                    } else {
+                        State.obsError = null;
+                        State.groundPoint = [
+                            activeRay.origin[0] + t*activeRay.dir_world[0],
+                            activeRay.origin[1] + t*activeRay.dir_world[1],
+                            0
+                        ];
+                        State.isTargetLocked = true;
+                    }
+                }
+            }
+
+            // 3. Actuator logic and reprojection (recomputed on every call)
+            State.aim = null;
+            State.aimError = null;
+            if (State.isTargetLocked && State.groundPoint) {
+                // Extrude the physical target upwards from the frozen Z=0 ground point
+                State.targetWorld = [State.groundPoint[0], State.groundPoint[1], State.tgtVal];
+
+                // Both the footprint and the extruded target are reprojected through the current camera.
+                // At click time the footprint lands exactly on the clicked pixel.
+                State.footUV = State.camera.worldToPixel(State.groundPoint);
+                State.tgtUV = State.camera.worldToPixel(State.targetWorld);
+                State.footInImage = !!State.footUV && State.footUV[0] >= 0 && State.footUV[0] <= State.camW && State.footUV[1] >= 0 && State.footUV[1] <= State.camH;
+                State.targetInFOV = State.camera.isPointInFOV(State.targetWorld);
+
+                try { State.aim = State.monitor.calculateAim(State.targetWorld); } 
+                catch(e) { State.aimError = e.message; }
+            } else {
+                State.targetWorld = null;
+                State.footUV = null; State.tgtUV = null;
+                State.footInImage = false; State.targetInFOV = false;
+            }
+            State.error = State.obsError || State.aimError;
+            
+            updateDOM(); drawAll();
+        }
+
+        function updateDOM() {
+            const $ = id => document.getElementById(id);
+            const badge = $('statusBadge');
+            const errBox = $('errorBox');
+            const visBox = $('resVis');
+            const BADGE_OK = "px-3 py-1 text-xs font-bold rounded bg-emerald-900/50 text-emerald-400 border border-emerald-800";
+            const BADGE_BAD = "px-3 py-1 text-xs font-bold rounded bg-rose-900/50 text-rose-400 border border-rose-800";
+            const fmtPx = (uv, inside) => !uv ? "BEHIND CAMERA" : (inside ? `${Math.round(uv[0])}, ${Math.round(uv[1])}` : "OFF SCREEN");
+
+            if (!State.isTargetLocked) {
+                badge.className = BADGE_BAD;
+                badge.textContent = "NO TARGET";
+                errBox.classList.remove('hidden'); errBox.textContent = State.error || "Please select a valid ground target in the Camera View.";
+                $('resPixel').textContent = "--"; $('resPixelTgt').textContent = "--";
+                $('resWorldX').textContent = "--"; $('resWorldY').textContent = "--"; $('resWorldZ').textContent = "--";
+                $('resPan').textContent = "--°"; $('resTilt').textContent = "--°";
+                $('resDist').textContent = "--m"; $('resRelH').textContent = "--m";
+                visBox.className = "text-[10px] font-bold px-2 py-0.5 rounded bg-slate-800 text-slate-500"; visBox.textContent = "--";
+                return;
+            }
+
+            $('resPixel').textContent = fmtPx(State.footUV, State.footInImage);
+            $('resPixelTgt').textContent = fmtPx(State.tgtUV, State.targetInFOV);
+            $('resWorldX').textContent = State.targetWorld[0].toFixed(2);
+            $('resWorldY').textContent = State.targetWorld[1].toFixed(2);
+            $('resWorldZ').textContent = State.targetWorld[2].toFixed(2);
+
+            if (State.aim) {
+                badge.className = BADGE_OK;
+                badge.textContent = "TARGET LOCKED";
+                errBox.classList.add('hidden');
+                $('resPan').textContent = State.aim.pan.toFixed(1) + "°";
+                $('resTilt').textContent = State.aim.tilt.toFixed(1) + "°";
+                $('resDist').textContent = State.aim.distance3d.toFixed(1) + "m";
+                $('resRelH').textContent = (State.aim.relHeight > 0 ? "+" : "") + State.aim.relHeight.toFixed(1) + "m";
+            } else {
+                badge.className = BADGE_BAD;
+                badge.textContent = "NO AIM SOLUTION";
+                errBox.classList.remove('hidden'); errBox.textContent = State.aimError;
+                $('resPan').textContent = "--°"; $('resTilt').textContent = "--°";
+                $('resDist').textContent = "--m"; $('resRelH').textContent = "--m";
+            }
+
+            if (State.targetInFOV) {
+                visBox.className = "text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-900/50 text-emerald-400 border border-emerald-800";
+                visBox.textContent = "YES";
+            } else {
+                visBox.className = "text-[10px] font-bold px-2 py-0.5 rounded bg-amber-900/50 text-amber-400 border border-amber-800";
+                visBox.textContent = "NO (OUT OF BOUNDS)";
+            }
+        }
+
+        class MapProjectorXY {
+            constructor(w, h, pts, zoom) {
+                this.w = w; this.h = h;
+                let minX = 1e9, maxX = -1e9, minY = 1e9, maxY = -1e9;
+                // ONLY scale based on devices and target. Ignore infinite FOV rays.
+                pts.forEach(p => {
+                    if (p[0] < minX) minX = p[0]; if (p[0] > maxX) maxX = p[0];
+                    if (p[1] < minY) minY = p[1]; if (p[1] > maxY) maxY = p[1];
+                });
+                const padX = Math.max(10, (maxX-minX)*0.2);
+                const padY = Math.max(10, (maxY-minY)*0.2);
+                minX -= padX; maxX += padX; minY -= padY; maxY += padY;
+                this.cx = (minX + maxX) / 2;
+                this.cy = (minY + maxY) / 2;
+                this.scale = Math.min(w / (maxX - minX), h / (maxY - minY)) * zoom;
+            }
+            map(worldPt) {
+                return [(worldPt[0] - this.cx) * this.scale + this.w / 2, -(worldPt[1] - this.cy) * this.scale + this.h / 2];
+            }
+        }
+
+        class ElevationProjector {
+            constructor(w, h, maxDist, deviceZ, zoom) {
+                this.w = w; this.h = h;
+                const padDist = Math.max(5, maxDist * 0.1);
+                this.minDist = -padDist;
+                this.maxDist = maxDist + padDist;
+                this.groundMargin = 25; 
+                this.topMargin = 20;
+                
+                const availableH = h - this.groundMargin - this.topMargin;
+                // Lock the max Z scale to the mounting height (plus some padding), independent of target height.
+                const effMaxZ = Math.max(10, deviceZ * 1.5); 
+                
+                this.scale = Math.min(w / (this.maxDist - this.minDist), availableH / effMaxZ) * zoom;
+                this.groundY = h - this.groundMargin;
+            }
+            map(dist, z) { return [ (dist - this.minDist) * this.scale, this.groundY - (z * this.scale) ]; }
+        }
+
+        function drawEntityBlock(ctx, px, py, scale, color, label, isTarget=false, isValid=true) {
+            ctx.fillStyle = isValid ? color : 'rgba(100,100,100,0.5)'; 
+            ctx.beginPath();
+            if (isTarget) {
+                const size = Math.max(8, 1.0 * scale); // 1x1m block, min 8px
+                ctx.rect(px - size/2, py - size/2, size, size);
+                ctx.fill(); ctx.strokeStyle = isValid ? '#fff' : '#aaa'; ctx.lineWidth = 1; ctx.stroke();
+            } else {
+                ctx.rect(px - 4, py - 4, 8, 8); ctx.fill();
+            }
+            ctx.fillStyle = '#fff'; ctx.font = 'bold 9px Inter'; 
+            ctx.fillText(label, px + 6, py - 6);
+        }
+
+        function drawOriginAxes(ctx, proj, cx, cy, isElevation = false) {
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.3)'; ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(cx-6, cy); ctx.lineTo(cx+6, cy); ctx.moveTo(cx, cy-6); ctx.lineTo(cx, cy+6); ctx.stroke();
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.5)'; ctx.font = '8px Inter'; ctx.fillText("(0,0,0)", cx+8, cy-8);
+            
+            ctx.lineWidth = 2;
+            ctx.strokeStyle = '#ef4444'; ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(cx+25, cy); ctx.stroke(); // X
+            if (!isElevation) {
+                ctx.strokeStyle = '#22c55e'; ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(cx, cy-25); ctx.stroke(); // Y
+            } else {
+                ctx.strokeStyle = '#3b82f6'; ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(cx, cy-25); ctx.stroke(); // Z
+            }
+        }
+
+        function renderTopView() {
+            const canvas = document.getElementById('canvasXY');
+            const ctx = canvas.getContext('2d');
+            const cw = canvas.width, ch = canvas.height;
+            ctx.clearRect(0, 0, cw, ch);
+
+            // Bounding box ignores FOV to prevent infinity zoom
+            let pts = [State.camPos, State.monPos];
+            if (State.groundPoint) pts.push(State.groundPoint);
+            const proj = new MapProjectorXY(cw, ch, pts, State.mapZoom);
+
+            // Grid
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)'; ctx.lineWidth = 1; ctx.beginPath();
+            for(let v = Math.floor((proj.cx - cw/2/proj.scale)/10)*10; v <= proj.cx + cw/2/proj.scale; v+=10) { const [px,] = proj.map([v,0,0]); ctx.moveTo(px,0); ctx.lineTo(px, ch); }
+            for(let v = Math.floor((proj.cy - ch/2/proj.scale)/10)*10; v <= proj.cy + ch/2/proj.scale; v+=10) { const [,py] = proj.map([0,v,0]); ctx.moveTo(0,py); ctx.lineTo(cw, py); }
+            ctx.stroke();
+
+            // FOV Ground Footprint (Clipped to Z=0)
+            if (State.fovGroundPoly.length === 4) {
+                ctx.fillStyle = 'rgba(16, 185, 129, 0.1)'; ctx.strokeStyle = 'rgba(16, 185, 129, 0.3)'; ctx.lineWidth = 1;
+                ctx.beginPath();
+                State.fovGroundPoly.forEach((p, i) => {
+                    const mapped = proj.map(p);
+                    if (i===0) ctx.moveTo(mapped[0], mapped[1]);
+                    else ctx.lineTo(mapped[0], mapped[1]);
+                });
+                ctx.closePath(); ctx.fill(); ctx.stroke();
+            }
+
+            const [cx, cy] = proj.map(State.camPos);
+            const [mx, my] = proj.map(State.monPos);
+            const [ox, oy] = proj.map([0,0,0]);
+            if (ox >= -20 && ox <= cw+20 && oy >= -20 && oy <= ch+20) drawOriginAxes(ctx, proj, ox, oy);
+
+            if (State.isTargetLocked && State.targetWorld) {
+                const [tx, ty] = proj.map(State.groundPoint);
+                ctx.strokeStyle = '#10b981'; ctx.lineWidth = 2; ctx.setLineDash([4,4]);
+                ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(tx, ty); ctx.stroke();
+                
+                ctx.strokeStyle = '#3b82f6'; ctx.lineWidth = 2; ctx.setLineDash([]);
+                ctx.beginPath(); ctx.moveTo(mx, my); ctx.lineTo(tx, ty); ctx.stroke();
+                
+                drawEntityBlock(ctx, tx, ty, proj.scale, '#f43f5e', 'TGT', true, State.targetInFOV);
+            }
+
+            drawEntityBlock(ctx, cx, cy, proj.scale, '#10b981', 'CAM');
+            drawEntityBlock(ctx, mx, my, proj.scale, '#3b82f6', 'MON');
+            
+            // Legend
+            const scaleLen = 10 * proj.scale;
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)'; ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.moveTo(10, ch - 15); ctx.lineTo(10 + scaleLen, ch - 15);
+            ctx.moveTo(10, ch - 18); ctx.lineTo(10, ch - 12); ctx.moveTo(10 + scaleLen, ch - 18); ctx.lineTo(10 + scaleLen, ch - 12); ctx.stroke();
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.7)'; ctx.font = 'bold 9px JetBrains Mono'; ctx.fillText("10m", 15 + scaleLen / 2 - 10, ch - 22);
+        }
+
+        function drawElevRayClipped(ctx, proj, startWorld, rayDir, color, isDashed=false) {
+            const hDirMag = Math.hypot(rayDir[0], rayDir[1]);
+            if (hDirMag < 1e-6) return;
+            const MAX_DIST = proj.maxDist;
+            let endPt;
+
+            if (rayDir[2] < -1e-6) { // Ray points downward
+                const t = (0 - startWorld[2]) / rayDir[2]; // intersect Z=0
+                const hDist = t * hDirMag;
+                if (hDist > MAX_DIST) {
+                    const t_clip = MAX_DIST / hDirMag;
+                    endPt = [startWorld[0] + t_clip*rayDir[0], startWorld[1] + t_clip*rayDir[1], startWorld[2] + t_clip*rayDir[2]];
+                } else {
+                    endPt = [startWorld[0] + t*rayDir[0], startWorld[1] + t*rayDir[1], 0];
+                }
+            } else { // Skyward or Horizon
+                const t_clip = MAX_DIST / hDirMag;
+                endPt = [startWorld[0] + t_clip*rayDir[0], startWorld[1] + t_clip*rayDir[1], startWorld[2] + t_clip*rayDir[2]];
+            }
+            
+            const dist = Math.hypot(endPt[0] - startWorld[0], endPt[1] - startWorld[1]);
+            const p0 = proj.map(0, startWorld[2]);
+            const p1 = proj.map(dist, endPt[2]);
+            
+            ctx.strokeStyle = color; ctx.lineWidth = isDashed ? 1 : 2;
+            if(isDashed) ctx.setLineDash([4,4]);
+            ctx.beginPath(); ctx.moveTo(p0[0], p0[1]); ctx.lineTo(p1[0], p1[1]); ctx.stroke();
+            ctx.setLineDash([]);
+        }
+
+        function renderCameraElevation() {
+            const canvas = document.getElementById('canvasCamElev');
+            const ctx = canvas.getContext('2d');
+            const cw = canvas.width, ch = canvas.height;
+            ctx.clearRect(0, 0, cw, ch);
+
+            let distHoriz = 0;
+            if (State.groundPoint) {
+                distHoriz = Math.hypot(State.groundPoint[0] - State.camPos[0], State.groundPoint[1] - State.camPos[1]);
+            }
+            const maxD = Math.max(distHoriz, 20); 
+            const proj = new ElevationProjector(cw, ch, maxD, State.camPos[2], State.mapZoom);
+
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)'; ctx.lineWidth = 1; ctx.beginPath();
+            for(let d = 0; d <= proj.maxDist; d+=10) { const [px,] = proj.map(d, 0); ctx.moveTo(px,0); ctx.lineTo(px, ch); }
+            for(let z = 0; z <= (ch - proj.groundMargin)/proj.scale; z+=5) { const [,py] = proj.map(0, z); ctx.moveTo(0,py); ctx.lineTo(cw, py); }
+            ctx.stroke();
+
+            const [, groundY] = proj.map(0, 0);
+            ctx.strokeStyle = 'rgba(180, 83, 9, 0.6)'; ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.moveTo(0, groundY); ctx.lineTo(cw, groundY); ctx.stroke();
+            ctx.fillStyle = 'rgba(180, 83, 9, 0.8)'; ctx.font = '8px Inter'; ctx.fillText("Ground Z=0", 5, groundY + 12);
+
+            // True Camera Vertical FOV Rays
+            const rayTop = State.camera.getRay(State.camera.cx, 0);
+            const rayCenter = State.camera.getRay(State.camera.cx, State.camera.cy);
+            const rayBottom = State.camera.getRay(State.camera.cx, State.camera.H);
+
+            drawElevRayClipped(ctx, proj, State.camPos, rayTop.dir_world, 'rgba(16, 185, 129, 0.3)', true);
+            drawElevRayClipped(ctx, proj, State.camPos, rayBottom.dir_world, 'rgba(16, 185, 129, 0.3)', true);
+            drawElevRayClipped(ctx, proj, State.camPos, rayCenter.dir_world, 'rgba(16, 185, 129, 0.6)', false);
+
+            if (State.isTargetLocked && State.targetWorld) {
+                const [fpx, fpy] = proj.map(0, State.camPos[2]);
+                const [tpx, tpy] = proj.map(distHoriz, State.targetWorld[2]);
+                const [, tGroundY] = proj.map(distHoriz, 0);
+
+                ctx.fillStyle = 'rgba(255,255,255,0.3)';
+                ctx.beginPath(); ctx.arc(tpx, tGroundY, 3, 0, Math.PI*2); ctx.fill();
+
+                ctx.strokeStyle = State.targetInFOV ? 'rgba(244, 63, 94, 0.4)' : 'rgba(100, 100, 100, 0.4)'; 
+                ctx.lineWidth = Math.max(8, proj.scale); 
+                ctx.beginPath(); ctx.moveTo(tpx, tGroundY); ctx.lineTo(tpx, tpy); ctx.stroke();
+                
+                // Viewing ray: camera -> ground footprint (what the camera actually saw through the clicked pixel)
+                ctx.strokeStyle = '#10b981'; ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.moveTo(fpx, fpy); ctx.lineTo(tpx, tGroundY); ctx.stroke();
+
+                // Reference only: camera -> extruded target. This is not a viewing ray unless the height is 0.
+                if (Math.abs(State.targetWorld[2]) > 1e-9) {
+                    ctx.strokeStyle = 'rgba(16, 185, 129, 0.5)'; ctx.lineWidth = 1; ctx.setLineDash([3,3]);
+                    ctx.beginPath(); ctx.moveTo(fpx, fpy); ctx.lineTo(tpx, tpy); ctx.stroke(); ctx.setLineDash([]);
+                }
+
+                drawEntityBlock(ctx, tpx, tpy, proj.scale, '#f43f5e', 'TGT', true, State.targetInFOV);
+                ctx.fillStyle = '#94a3b8'; ctx.font = '9px JetBrains Mono';
+                ctx.fillText(`Dist: ${distHoriz.toFixed(1)}m`, tpx + 10, tGroundY - 10);
+            }
+
+            const [fpx, fpy] = proj.map(0, State.camPos[2]);
+            drawEntityBlock(ctx, fpx, fpy, proj.scale, '#10b981', 'CAM');
+        }
+
+        function renderMonitorElevation() {
+            const canvas = document.getElementById('canvasMonElev');
+            const ctx = canvas.getContext('2d');
+            const cw = canvas.width, ch = canvas.height;
+            ctx.clearRect(0, 0, cw, ch);
+
+            let distHoriz = 0;
+            if (State.groundPoint) {
+                distHoriz = Math.hypot(State.groundPoint[0] - State.monPos[0], State.groundPoint[1] - State.monPos[1]);
+            }
+            const maxD = Math.max(distHoriz, 20);
+            const proj = new ElevationProjector(cw, ch, maxD, State.monPos[2], State.mapZoom);
+
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)'; ctx.lineWidth = 1; ctx.beginPath();
+            for(let d = 0; d <= proj.maxDist; d+=10) { const [px,] = proj.map(d, 0); ctx.moveTo(px,0); ctx.lineTo(px, ch); }
+            for(let z = 0; z <= (ch - proj.groundMargin)/proj.scale; z+=5) { const [,py] = proj.map(0, z); ctx.moveTo(0,py); ctx.lineTo(cw, py); }
+            ctx.stroke();
+
+            const [, groundY] = proj.map(0, 0);
+            ctx.strokeStyle = 'rgba(180, 83, 9, 0.6)'; ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.moveTo(0, groundY); ctx.lineTo(cw, groundY); ctx.stroke();
+            ctx.fillStyle = 'rgba(180, 83, 9, 0.8)'; ctx.font = '8px Inter'; ctx.fillText("Ground Z=0", 5, groundY + 12);
+
+            const [fpx, fpy] = proj.map(0, State.monPos[2]);
+
+            if (State.isTargetLocked && State.targetWorld) {
+                const [tpx, tpy] = proj.map(distHoriz, State.targetWorld[2]);
+                const [, tGroundY] = proj.map(distHoriz, 0);
+
+                ctx.strokeStyle = State.targetInFOV ? 'rgba(244, 63, 94, 0.3)' : 'rgba(100, 100, 100, 0.3)'; 
+                ctx.lineWidth = Math.max(8, proj.scale); 
+                ctx.beginPath(); ctx.moveTo(tpx, tGroundY); ctx.lineTo(tpx, tpy); ctx.stroke();
+
+                ctx.strokeStyle = '#3b82f6'; ctx.lineWidth = 2;
+                ctx.beginPath(); ctx.moveTo(fpx, fpy); ctx.lineTo(tpx, tpy); ctx.stroke();
+                
+                ctx.strokeStyle = 'rgba(255,255,255,0.2)'; ctx.lineWidth = 1; ctx.setLineDash([2,2]);
+                ctx.beginPath(); ctx.moveTo(fpx, fpy); ctx.lineTo(fpx + 50, fpy); ctx.stroke(); ctx.setLineDash([]);
+
+                drawEntityBlock(ctx, tpx, tpy, proj.scale, '#f43f5e', 'TGT', true, State.targetInFOV);
+                
+                if (State.aim) {
+                    ctx.fillStyle = '#3b82f6'; ctx.font = 'bold 10px Inter';
+                    ctx.fillText(`${State.aim.tilt.toFixed(1)}°`, fpx + 20, fpy + (State.aim.tilt < 0 ? 15 : -10));
+                }
+            }
+
+            drawEntityBlock(ctx, fpx, fpy, proj.scale, '#3b82f6', 'MON');
+        }
+
+        function renderUV() {
+            const canvas = document.getElementById('canvasUV');
+            const ctx = canvas.getContext('2d');
+            const cw = canvas.width, ch = canvas.height;
+            ctx.clearRect(0, 0, cw, ch);
+
+            if (!State.camera) return;
+
+            // 1. Calculate Exact Geometric Horizon
+            // Using v = cy + fy * tan(pitch) for R_optical_to_body transformation
+            const pitchRad = MathCore.deg2rad(State.camPitch);
+            const horizonV_native = State.camera.cy + State.camera.fy * Math.tan(pitchRad);
+            const horizonY = (horizonV_native / State.camH) * ch;
+
+            // 2. Draw Sky and Ground
+            ctx.fillStyle = '#0f172a'; // Sky color
+            ctx.fillRect(0, 0, cw, Math.max(0, horizonY));
+            
+            ctx.fillStyle = '#020617'; // Ground color
+            ctx.fillRect(0, Math.max(0, horizonY), cw, ch - Math.max(0, horizonY));
+
+            // Draw Horizon Line
+            if (horizonY > 0 && horizonY < ch) {
+                ctx.strokeStyle = 'rgba(56, 189, 248, 0.4)'; // Sky blue tint
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(0, horizonY);
+                ctx.lineTo(cw, horizonY);
+                ctx.stroke();
+            }
+
+            // 3. Draw Projected 3D Ground Grid (Z=0)
+            const step = 10;
+            const radius = 200; // Clip grid to 200m radius around camera
+            const cx = Math.floor(State.camPos[0] / step) * step;
+            const cy = Math.floor(State.camPos[1] / step) * step;
+
+            // 3D to 2D line clipper ensuring we don't project points behind camera
+            function clipAndProjectLine(p1_w, p2_w) {
+                const p1_c = State.camera.worldToCamera(p1_w);
+                const p2_c = State.camera.worldToCamera(p2_w);
+                const near = 0.1; // Near clipping plane
+                
+                if (p1_c[2] < near && p2_c[2] < near) return null; // Entire line is behind camera
+                
+                let p1 = [...p1_c], p2 = [...p2_c];
+                if (p1_c[2] < near) {
+                    const t = (near - p1_c[2]) / (p2_c[2] - p1_c[2]);
+                    p1 = [p1_c[0] + t * (p2_c[0] - p1_c[0]), p1_c[1] + t * (p2_c[1] - p1_c[1]), near];
+                } else if (p2_c[2] < near) {
+                    const t = (near - p2_c[2]) / (p1_c[2] - p2_c[2]);
+                    p2 = [p2_c[0] + t * (p1_c[0] - p2_c[0]), p2_c[1] + t * (p1_c[1] - p2_c[1]), near];
+                }
+                
+                const u1 = State.camera.fx * (p1[0] / p1[2]) + State.camera.cx;
+                const v1 = State.camera.fy * (p1[1] / p1[2]) + State.camera.cy;
+                const u2 = State.camera.fx * (p2[0] / p2[2]) + State.camera.cx;
+                const v2 = State.camera.fy * (p2[1] / p2[2]) + State.camera.cy;
+                
+                return [ [(u1 / State.camW) * cw, (v1 / State.camH) * ch], [(u2 / State.camW) * cw, (v2 / State.camH) * ch] ];
+            }
+
+            ctx.strokeStyle = 'rgba(16, 185, 129, 0.15)'; 
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            // X-Lines
+            for (let x = cx - radius; x <= cx + radius; x += step) {
+                const seg = clipAndProjectLine([x, cy - radius, 0], [x, cy + radius, 0]);
+                if (seg) { ctx.moveTo(seg[0][0], seg[0][1]); ctx.lineTo(seg[1][0], seg[1][1]); }
+            }
+            // Y-Lines
+            for (let y = cy - radius; y <= cy + radius; y += step) {
+                const seg = clipAndProjectLine([cx - radius, y, 0], [cx + radius, y, 0]);
+                if (seg) { ctx.moveTo(seg[0][0], seg[0][1]); ctx.lineTo(seg[1][0], seg[1][1]); }
+            }
+            ctx.stroke();
+
+            // 4. Draw the footprint (crosshair) and the extruded target (square), both reprojected
+            if (State.isTargetLocked && State.targetWorld) {
+                const toCanvas = uv => [(uv[0] / State.camW) * cw, (uv[1] / State.camH) * ch];
+                const fp = State.footUV ? toCanvas(State.footUV) : null;
+                const tp = State.tgtUV ? toCanvas(State.tgtUV) : null;
+                const col = State.targetInFOV ? '#10b981' : '#f59e0b';
+
+                // Vertical pole in image space, from footprint up to the target
+                if (fp && tp) {
+                    ctx.strokeStyle = 'rgba(244, 63, 94, 0.6)'; ctx.lineWidth = 2; ctx.setLineDash([4,3]);
+                    ctx.beginPath(); ctx.moveTo(fp[0], fp[1]); ctx.lineTo(tp[0], tp[1]); ctx.stroke();
+                    ctx.setLineDash([]);
+                }
+
+                // Footprint crosshair (this is the clicked pixel at click time)
+                if (fp && State.footInImage) {
+                    ctx.strokeStyle = col; ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.arc(fp[0], fp[1], 12, 0, Math.PI*2);
+                    ctx.moveTo(fp[0] - 20, fp[1]); ctx.lineTo(fp[0] + 20, fp[1]);
+                    ctx.moveTo(fp[0], fp[1] - 20); ctx.lineTo(fp[0], fp[1] + 20);
+                    ctx.stroke();
+                }
+
+                // Target marker
+                if (tp && State.targetInFOV) {
+                    ctx.fillStyle = '#f43f5e'; ctx.strokeStyle = '#fff'; ctx.lineWidth = 1;
+                    ctx.beginPath(); ctx.rect(tp[0] - 5, tp[1] - 5, 10, 10); ctx.fill(); ctx.stroke();
+                    ctx.fillStyle = '#fff'; ctx.font = 'bold 9px Inter'; ctx.fillText('TGT', tp[0] + 9, tp[1] - 7);
+                }
+            }
+        }
+
+        function drawAll() {
+            renderUV();
+            renderTopView();
+            renderCameraElevation();
+            renderMonitorElevation();
+        }
+
+        function init() {
+            const ro = new ResizeObserver(entries => {
+                for (let e of entries) {
+                    const cvs = e.target.querySelector('canvas');
+                    if (cvs && (cvs.width !== Math.floor(e.contentRect.width) || cvs.height !== Math.floor(e.contentRect.height))) {
+                        cvs.width = Math.floor(e.contentRect.width);
+                        cvs.height = Math.floor(e.contentRect.height);
+                    }
+                }
+                if (State.camera) drawAll();
+            });
+            ['containerUV', 'containerXY', 'containerCamElev', 'containerMonElev'].forEach(id => ro.observe(document.getElementById(id)));
+
+            // Inputs are validated: an invalid or empty value is flagged and ignored, and the last valid value stays in use.
+            const isFiniteNum = v => Number.isFinite(v);
+            const bindNumber = (id, prop, validate) => { 
+                const el = document.getElementById(id);
+                el.addEventListener('input', () => { 
+                    const val = parseFloat(el.value);
+                    const ok = isFiniteNum(val) && (!validate || validate(val));
+                    el.classList.toggle('invalid', !ok);
+                    if (!ok) return;
+                    State[prop] = val; 
+                    calculateSystem(false); 
+                }); 
+            };
+            const bindArray = (id, prop, idx) => { 
+                const el = document.getElementById(id);
+                el.addEventListener('input', () => { 
+                    const val = parseFloat(el.value);
+                    const ok = isFiniteNum(val);
+                    el.classList.toggle('invalid', !ok);
+                    if (!ok) return;
+                    State[prop][idx] = val; 
+                    calculateSystem(false); // Changing pos/orientation does NOT create new target
+                }); 
+            };
+
+            bindNumber('cfgCamW', 'camW', v => v >= 1);
+            bindNumber('cfgCamH', 'camH', v => v >= 1);
+            bindNumber('cfgCamFOV', 'hfov', v => v >= 1 && v <= 179);
+            bindArray('cfgCamX', 'camPos', 0); bindArray('cfgCamY', 'camPos', 1); bindArray('cfgCamZ', 'camPos', 2);
+            bindArray('cfgMonX', 'monPos', 0); bindArray('cfgMonY', 'monPos', 1); bindArray('cfgMonZ', 'monPos', 2);
+            bindNumber('cfgTargetVal', 'tgtVal'); 
+
+            ['cfgCamYaw', 'cfgCamPitch'].forEach(id => {
+                document.getElementById(id).addEventListener('input', (e) => {
+                    const val = parseFloat(e.target.value);
+                    if (id==='cfgCamYaw') { State.camYaw = val; document.getElementById('lblCamYaw').textContent = val+'°'; }
+                    if (id==='cfgCamPitch') { State.camPitch = val; document.getElementById('lblCamPitch').textContent = val+'°'; }
+                    calculateSystem(false); // Pitch/Yaw changes DO NOT re-localize target
+                });
+            });
+            
+            document.getElementById('cfgMapZoom').addEventListener('input', (e) => {
+                State.mapZoom = parseFloat(e.target.value);
+                document.getElementById('lblMapZoom').textContent = State.mapZoom.toFixed(1) + 'x';
+                drawAll();
+            });
+
+            // Pointer events: one code path for mouse, touch and pen
+            const cvsUV = document.getElementById('canvasUV');
+            let isDrag = false;
+            const handlePointer = (e) => {
+                const rect = cvsUV.getBoundingClientRect();
+                let clickedU = ((e.clientX - rect.left) / rect.width) * State.camW;
+                let clickedV = ((e.clientY - rect.top) / rect.height) * State.camH;
+                State.u = Math.max(0, Math.min(State.camW, clickedU));
+                State.v = Math.max(0, Math.min(State.camH, clickedV));
+                // Explicitly clicking the canvas triggers a TRUE re-localization
+                calculateSystem(true); 
+            };
+            const endDrag = () => { isDrag = false; };
+            
+            cvsUV.addEventListener('pointerdown', (e) => {
+                isDrag = true;
+                if (cvsUV.setPointerCapture) cvsUV.setPointerCapture(e.pointerId);
+                handlePointer(e);
+            });
+            cvsUV.addEventListener('pointermove', (e) => { if (isDrag) handlePointer(e); });
+            cvsUV.addEventListener('pointerup', endDrag);
+            cvsUV.addEventListener('pointercancel', endDrag);
+
+            // Initialize default state
+            setTimeout(() => calculateSystem(true), 100);
+        }
+
+        window.onload = init;
+    </script>
+</body>
+</html>
