@@ -50,23 +50,32 @@ It is a single HTML file written in plain HTML, CSS and JavaScript. It loads Tai
 
 ---
 
-## Spatial Reference and Calibration Concept
+## Spatial Reference
 
 The demonstration uses a common world coordinate system to relate the camera, target environment and fire monitor.
 
-In a physical installation, this spatial reference would need to be established through suitable surveying, laser-based measurement, 3D scanning or other calibration methods. The purpose is to determine the spatial relationship between independently installed sensing and actuation devices and the relevant scene geometry.
+In a physical installation, a spatial reference could be established by surveying or 3D scanning the site. Identifiable calibration targets can be placed at selected locations before scanning so that their measured positions can be identified in the resulting 3D model. These reference points provide known spatial coordinates for subsequent calibration and validation.
 
-The concept can be separated into three stages:
+In this demonstration, the spatial reference is represented by predefined synthetic positions and orientations rather than real survey or scan data.
+
+## Calibration Concept
+
+The key engineering challenge is not only acquiring 3D geometry, but establishing and validating the pose of each sensing and actuation device within the common spatial reference.
+
+A possible physical calibration workflow is:
 
 | Stage | Purpose |
 |---|---|
-| Spatial reference establishment | Measure the site geometry and determine the spatial relationship between camera, environment and actuator |
-| Runtime targeting | Use the calibrated camera geometry and scene constraints to convert an image target into a physical target position and actuator direction |
-| Spatial reference maintenance | Periodically verify the spatial relationship and recalibrate when equipment or scene geometry changes |
+| Reference target placement | Place identifiable calibration targets at selected physical locations |
+| 3D scanning | Capture the site and calibration targets in a common spatial model |
+| Reference extraction | Identify the calibration targets and their measured 3D coordinates |
+| Pose calibration | Match observed target features with their 3D coordinates to estimate camera and actuator poses |
+| Calibration validation | Use independent reference points and residual errors to verify the resulting spatial transformations |
+| Runtime use | Apply the calibrated transformations to convert image-based targets into actuator coordinates |
 
-In this demonstration, these measurements are represented by predefined synthetic positions and orientations rather than real survey or calibration data.
+The resulting calibration establishes the spatial relationship between the sensing system, the scene and the actuator. The demonstration uses predefined synthetic poses instead of performing this physical calibration process.
 
-The key principle is that **spatial calibration establishes the reference that connects perception to physical action**. The same principle applies to other distributed sensor-to-actuator systems where sensing and actuation are physically separated.
+The key principle is that **3D scanning provides the spatial geometry, while calibration establishes and validates the pose relationships that connect perception to physical action**.
 
 ---
 
