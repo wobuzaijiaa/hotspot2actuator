@@ -69,7 +69,8 @@ A possible physical calibration workflow is:
 | Reference target placement | Place identifiable calibration targets at selected physical locations |
 | 3D scanning | Capture the site and calibration targets in a common spatial model |
 | Reference extraction | Identify the calibration targets and their measured 3D coordinates |
-| Pose calibration | Match observed target features with their 3D coordinates to estimate camera and actuator poses |
+| Camera pose calibration | Match observed target features with their 3D coordinates to estimate the camera's extrinsic pose |
+| Actuator pose/axis calibration | Establish the actuator reference frame and pointing-axis relationship relative to the common spatial reference |
 | Calibration validation | Use independent reference points and residual errors to verify the resulting spatial transformations |
 | Runtime use | Apply the calibrated transformations to convert image-based targets into actuator coordinates |
 
