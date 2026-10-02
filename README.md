@@ -94,4 +94,4 @@ These limitations define the scope of the demonstration rather than the scope of
 
 | Document | Purpose |
 |---|---|
-| [`docs/geometry-model.md`](docs/geometry-model.md) | Coordinate systems, camera-to-world transformation, target-plane intersection, monitor-frame transformation and Pan/Tilt calculation |
+| [`geometry-model.md`](geometry-model.md) | Coordinate systems, camera-to-world transformation, target-plane intersection, monitor-frame transformation and Pan/Tilt calculation |
