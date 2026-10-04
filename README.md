@@ -4,7 +4,7 @@ An interactive browser demonstration of how a manually selected synthetic hotspo
 
 ![Demo screenshot](screenshot.png)
 
-**Live demo:** `<https://wobuzaijiaa.github.io/hotspot2actuator/>`
+**Live demo:** [wobuzaijiaa.github.io/hotspot2actuator](https://wobuzaijiaa.github.io/hotspot2actuator/)
 
 > **Independent technical demonstration inspired by industrial spatial-computing and automated-actuation scenarios. All geometry, parameters, images, and data are synthetic. The implementation does not reproduce or disclose any customer system.**
 
