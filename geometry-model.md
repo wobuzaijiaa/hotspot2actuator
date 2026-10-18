@@ -1,210 +1,128 @@
-# Geometry Model of the Spatial Hotspot-to-Actuator Targeting Demo
+# Geometry Model of Spatial Target Planning
 
 ## 1. Purpose
 
-This document describes the spatial geometry model used in the demonstration.
+The model describes the geometric relationship between a virtual camera, a terrain-surface target, and a fire monitor.
 
-The purpose of the model is to establish the physical location of a manually selected hotspot from its position in a synthetic camera image, and to transform that location into Pan/Tilt angles for aiming a separately positioned fire monitor.
+It supports:
+- Target localization from a camera image point or direct world-view selection.
+- Camera field-of-view, range, and terrain line-of-sight checks.
+- Monitor pan, tilt, distance, range, and line-of-sight calculations.
 
-The model demonstrates the spatial relationship between image coordinates, camera geometry, physical target coordinates, and the actuator's own coordinate frame. It is intentionally separated from the system architecture and fire-detection logic described in the main project README. No thermal detection is part of this model: the hotspot is selected by hand.
+The demo uses a synthetic scene and manual target selection. It does not perform automatic target detection, image-based depth estimation, or physical device control.
 
-## 2. Geometry Model
+## 2. Coordinate System
 
-The demonstration represents the environment in one common world coordinate system. The camera is placed in it by a position and an orientation (yaw and pitch). The fire monitor is placed in it by a position; its zero-pan direction is fixed to world `+X`. The hotspot is assumed to lie on the ground plane, and the target is that ground point raised to a height entered by the user.
+All components share a Cartesian world coordinate system:
 
-A hotspot is selected in image coordinates and then transformed, step by step, into a physical target and an actuator command.
+- $X,Y$: horizontal position.
+- $Z$: elevation, positive upward.
+- Positions and distances: meters.
+- Angles: degrees.
 
-| Stage | Input | Transformation | Output |
-|---|---|---|---|
-| Image selection | Synthetic camera image | Manual hotspot selection | Image coordinate `(u, v)` |
-| Camera model | `(u, v)` + camera intrinsics and pose | Image-to-ray transformation | 3D viewing ray in the world frame |
-| Spatial model | Viewing ray + ground plane | Ray–plane intersection | Ground point `(X, Y, 0)` |
-| Target height | Ground point + entered height `h` | Vertical extrusion | Physical target `(X, Y, h)` |
-| Monitor frame | Physical target + monitor position | World → monitor transformation (translation) | Target relative to the monitor |
-| Targeting model | Monitor-relative target | Direction calculation | Pan / Tilt |
+The terrain is a heightfield:
 
-The core geometric problem is therefore:
+$$
+Z=H(X,Y)
+$$
 
-**Image point → Viewing ray → Ground point → Target at entered height → Monitor-relative target → Pan/Tilt**
+Camera orientation is defined by yaw and pitch. The monitor's zero-pan direction is world $+X$; positive pan points toward $+Y$, and positive tilt points upward.
 
-This converts a two-dimensional image selection into a location in the modeled physical environment, and that location into an actuator direction.
+Camera and monitor heights above ground are converted to world elevation using the terrain height at their respective horizontal positions.
 
-## 3. Coordinate Systems
+## 3. Target Localization
 
-Four coordinate systems are relevant to the demonstration.
+Targets are points on the modeled terrain surface:
 
-| Coordinate System | Representation | Axes | Purpose |
-|---|---|---|---|
-| Image | `(u, v)` | `u` right, `v` down; continuous coordinates, origin at the top-left corner | Position of the selected hotspot in the image |
-| Camera (optical) | `(x_c, y_c, z_c)` | `x` right, `y` down, `z` forward | Direction relative to the camera |
-| World | `(X, Y, Z)` | Right-handed, `Z` up | Common spatial reference for camera, target and monitor |
-| Monitor | `(x, y, z)` | `x` forward (world `+X`), `y` left (world `+Y`), `z` up; origin at the monitor | The actuator's own reference for Pan/Tilt |
+$$
+\mathbf P_t=(X,Y,H(X,Y))
+$$
 
-The world coordinate system provides the common spatial reference. The camera and the monitor do not need to share a local frame; each is related to the world frame by its own position (and, for the camera, its orientation).
+**Camera selection:** An image coordinate defines a camera viewing ray. The target is the first valid forward intersection with the terrain.
 
-Camera orientation is given by yaw and pitch. Yaw is counter-clockwise from world `+X` viewed from above. Pitch is positive when looking up. Roll is not used.
+**World selection:** The target is selected directly on the modeled surface.
 
-The hotspot is assumed to lie on the ground plane `Z = 0`. A plane is written as:
+Terrain coverage and world bounds define the valid target domain. Terrain evaluation is unavailable outside valid coverage; values are not extrapolated.
 
-`n · P + d = 0`
+The target state is defined by its horizontal coordinates. Its elevation is derived from the active terrain.
 
-where `n` is the plane normal and `d` defines its position. For the ground plane, `n = (0, 0, 1)` and `d = 0`.
+## 4. Camera Geometry
 
-## 4. Image Point to Viewing Ray
+The camera uses an ideal pinhole model defined by image resolution, horizontal field of view, position, yaw, and pitch. Lens distortion and roll are not modeled.
 
-A selected hotspot provides an image coordinate `(u, v)`.
+For image point $(u,v)$, the camera-frame viewing direction is:
 
-The camera intrinsic matrix `K` is configured, not estimated by calibration. It is derived from the image size `W × H` and the horizontal field of view, assuming square pixels and a centred principal point:
+$$
+\mathbf r_c=
+\begin{bmatrix}
+(u-c_x)/f\\
+(v-c_y)/f\\
+1
+\end{bmatrix}
+$$
 
-`fx = fy = (W / 2) / tan(HFOV / 2)`,  `cx = W / 2`,  `cy = H / 2`
+where $f$ is the focal length in pixel units and $(c_x,c_y)$ is the image center. The world-space ray is obtained by rotating and normalizing this direction:
 
-| Element | Definition | Meaning |
-|---|---|---|
-| Image point | `(u, v)` | Selected hotspot position |
-| Homogeneous image point | `[u, v, 1]ᵀ` | Homogeneous representation |
-| Camera intrinsics | `K` | Configured camera parameters |
-| Camera-space direction | `r_c = K⁻¹ [u, v, 1]ᵀ = [(u − cx)/fx, (v − cy)/fy, 1]ᵀ` | Viewing direction relative to the camera |
-| Unit direction | `r̂_c = r_c / ‖r_c‖` | Normalized to unit length |
+$$
+\mathbf P(t)=\mathbf C+t\mathbf r_w,\quad t>0
+$$
 
-The direction is then transformed from camera coordinates into world coordinates:
+The target is localized by intersecting this ray with the terrain.
 
-`r_w = R_cw · r̂_c`
+## 5. Monitor Geometry
 
-`R_cw` is the rotation from the camera optical frame (`x` right, `y` down, `z` forward) to the world frame. It is built from the camera's yaw and pitch together with the fixed mapping between the optical axes and the camera body axes (`x` forward, `y` left, `z` up). Using yaw and pitch alone, without that fixed mapping, produces a wrong ray.
+For monitor position $\mathbf M$ and target position $\mathbf P_t$, define:
 
-The camera position in world coordinates is `C`. The viewing ray is:
+$$
+(x,y,z)=\mathbf P_t-\mathbf M
+$$
 
-`P(t) = C + t · r_w`,  with `t > 0`
+$$
+d_h=\sqrt{x^2+y^2},\qquad
+d_{3D}=\sqrt{x^2+y^2+z^2}
+$$
 
-where `t` is the distance along the viewing direction.
+$$
+\mathrm{pan}=\operatorname{atan2}(y,x)
+$$
 
-## 5. Ray–Plane Intersection
+$$
+\mathrm{tilt}=\operatorname{atan2}(z,d_h)
+$$
 
-The ground point is obtained by intersecting the viewing ray with the ground plane.
+Pan and tilt describe the straight-line pointing direction. They do not model water-jet trajectory, hardware limits, or physical actuation.
 
-For a general plane `n · P + d = 0`, substituting the ray equation gives:
+## 6. Validation
 
-`n · (C + t · r_w) + d = 0`
+The model evaluates the following conditions independently:
 
-The distance parameter is therefore:
-
-`t = −(n · C + d) / (n · r_w)`
-
-and the intersection point is:
-
-`G = C + t · r_w`
-
-For the ground plane this simplifies to `t = −C_z / r_w,z`: the value of `t` at which the ray reaches zero elevation. The result is the ground point `G = (X, Y, 0)`.
-
-**Validity conditions.** The intersection is rejected, and an error is reported, when:
-
-| Condition | Meaning |
+| Check | Purpose |
 |---|---|
-| `abs(n · r_w) < ε` | The ray is parallel to the ground and never meets it |
-| `t ≤ 0` | The intersection lies behind the camera (this includes rays pointing at or above the horizon) |
+| Target domain | Valid world bounds and terrain coverage |
+| Terrain consistency | Target elevation agrees with the active surface, when applicable |
+| Camera field of view | Target is in front of the camera and projects inside the image |
+| Camera range | Camera-to-target 3D distance is within range |
+| Camera line of sight | Terrain does not obstruct the camera-to-target segment |
+| Monitor range | Monitor-to-target 3D distance is within range |
+| Monitor line of sight | Terrain does not obstruct the monitor-to-target segment |
 
-## 6. Target Height
+Checks report `pass`, `fail`, or `unknown`. Unavailable numeric results are represented as null, not zero.
 
-The ray determines only where on the ground the hotspot is. The target used for aiming is that ground point raised to a height `h` entered by the user:
+A valid target position does not necessarily imply camera visibility or monitor reachability.
 
-`P_target = (G_x, G_y, h)`
+## 7. Assumptions and Limitations
 
-The ground point is fixed when the hotspot is selected. Changing `h` moves the target vertically and does not change `(X, Y)`.
+- Targets lie on the modeled terrain; elevated target offsets are not supported.
+- Terrain is represented as a heightfield, not arbitrary 3D geometry.
+- Line-of-sight checks use terrain sampling and may miss narrow obstructions.
+- Buildings, vegetation, and other independent 3D obstacles are not modeled.
+- Camera parameters are configured rather than physically calibrated.
+- Monitor angles are geometric results, not hardware commands or proof of suppression effectiveness.
 
-The ground point lies on the viewing ray, but the raised target generally does not. For `h > 0` the target is therefore not on the camera's viewing ray; the ray is used only to find the ground footprint. For `h = 0` the target is the ray–ground intersection itself.
+The demo is intended for geometry exploration and validation, not operational or safety-critical decisions.
 
-A hotspot occupying a particular image position does not by itself define its physical distance. The ground-plane assumption provides the additional geometric information required to determine the physical point. It is an assumption of the scenario, not something the camera measures, and a wrong assumption gives a wrong target. Any known surface could provide the same kind of constraint; this demonstration uses only the ground plane.
+## 8. Output
 
-The model intersects an infinite plane. It does not check whether the ground point lies within the real extent of the ground, for example inside the facility boundary.
+The application can export a JSON report containing the scene configuration, terrain, camera and monitor parameters, target position, calculated geometry, and validation results.
 
-## 7. Target Coordinate to Fire-Monitor Pan/Tilt
-
-Once the target has been localized as a world-space point `P_target`, the fire monitor's position `M` is used to express it relative to the monitor. The monitor's zero-pan direction is fixed to world `+X`, so its frame is the world frame shifted to `M`, and no rotation is needed.
-
-**Step 1: world → monitor frame.**
-
-`(x, y, z) = P_target − M`
-
-with `x` forward (`+X`), `y` left (`+Y`) and `z` up.
-
-**Step 2: direction → angles.**
-
-`pan = atan2(y, x)`
-
-`tilt = atan2(z, √(x² + y²))`
-
-Pan is the horizontal angle from the monitor's forward direction (`+X`), positive counter-clockwise when viewed from above (a target toward `+Y` has positive pan), and is taken in the range −180° to +180°. Tilt is positive upward. If `x` and `y` are both close to zero (target directly above or below the monitor), pan is undefined and is reported as such.
-
-| Input | Calculation | Output |
-|---|---|---|
-| Monitor position | `M` | Reference position |
-| Target position | `P_target` | Physical target |
-| Monitor-relative target | `P_target − M` | `(x, y, z)` |
-| Horizontal components | `atan2(y, x)` | Pan |
-| Vertical component + horizontal range | `atan2(z, √(x² + y²))` | Tilt |
-
-**Illustrative values (demo defaults).** Camera at `C = (5, 8, 8)` m, yaw 25°, pitch −25°, image 1280 × 720, horizontal FOV 70°; selected pixel `(450, 350)`; target height `h = 2` m; monitor at `M = (35, 10, 6)` m.
-
-| Quantity | Value |
-|---|---|
-| Viewing ray in the world frame `r_w` | `(0.7223, 0.5613, −0.4040)` |
-| Ground point `G` | `(19.30, 19.11, 0.00)` |
-| Target `P_target` | `(19.30, 19.11, 2.00)` |
-| `P_target − M` | `(−15.70, 9.11, −4.00)` |
-| Pan `atan2(9.11, −15.70)` | `149.9°` |
-| Tilt `atan2(−4.00, 18.15)` | `−12.4°` |
-| Distance monitor → target | `18.6 m` |
-
-The demonstration therefore establishes a complete geometric relationship between the selected hotspot and the corresponding aiming direction.
-
-## 8. Demonstration Assumptions
-
-The geometry model is a controlled technical demonstration rather than a complete industrial calibration model.
-
-| Assumption | Purpose |
-|---|---|
-| Camera intrinsics are known (configured values) | Required to reconstruct the viewing direction |
-| Camera pose is known | Required to transform the ray into world coordinates |
-| The hotspot lies on the ground plane, and the target height is entered | Provides the depth constraint and the aiming height |
-| Coordinate systems are consistently defined | Enables spatial transformation |
-| Fire-monitor position is known; its zero-pan direction is world `+X` | Required to express the target relative to the monitor |
-| The ground is flat and level (`Z = 0`) | Allows the ray–ground intersection to be calculated |
-
-In a production implementation, additional factors could include camera calibration accuracy, thermal-camera alignment, lens distortion, mechanical installation tolerances, monitor kinematics, occlusion, changing environmental geometry, and independent safety interlocks.
-
-These considerations are outside the scope of the demonstration geometry.
-
-## 9. What the Model Demonstrates
-
-The key technical capability demonstrated by the model is spatial localization and its conversion into an actuator direction.
-
-| Image-Based Result | Spatial Result |
-|---|---|
-| Hotspot selected at `(u, v)` | Hotspot localized at `(X, Y, Z)` |
-| Two-dimensional image position | Physical position in the modeled environment |
-| No explicit depth | Depth determined through geometric constraint |
-| Image selection | Targeting input (Pan/Tilt) |
-
-The model therefore demonstrates that a target selected in an image can be interpreted within a defined three-dimensional spatial reference and converted into a physically meaningful target coordinate and an actuator-relative direction.
-
-## 10. Scope and Limitations
-
-The model deliberately focuses on the geometric transformation required for the demonstration.
-
-It does not attempt to represent every aspect of an industrial fire-suppression system, including:
-
-- Thermal imaging, hotspot detection and filtering
-- Full camera calibration, lens distortion and sensor fusion
-- Complex or continuously changing 3D environments
-- Occlusion: neither the camera's view nor the monitor's line of sight is checked
-- Bounded target surfaces (see Section 6)
-- Monitor mounting orientation (zero pan is fixed to world `+X`) and Pan/Tilt operating limits
-- Fire-monitor mechanical control implementation
-- Water trajectory and ballistic modelling
-- Hydraulic performance
-- Safety interlocks and suppression authorization logic
-- Industrial functional-safety certification
-
-The geometry model should therefore be understood as the spatial reasoning layer supporting the demonstration.
-
-Its purpose is to make the relationship between **selected image location, physical target location, and monitor aiming direction** explicit and technically traceable.
+For implementation-specific behavior and numeric verification, consult the source code and dedicated tests.
