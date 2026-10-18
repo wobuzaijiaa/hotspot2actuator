@@ -83,11 +83,11 @@ d_{3D}=\sqrt{x^2+y^2+z^2}
 $$
 
 $$
-\mathrm{pan}=\text{atan2}(y,x)
+\mathrm{pan}=\mathrm{atan2}(y,x)
 $$
 
 $$
-\mathrm{tilt}=\text{atan2}(z,d_h)
+\mathrm{tilt}=\mathrm{atan2}(z,\sqrt{x^2+y^2})
 $$
 
 Pan and tilt describe the straight-line pointing direction. They do not model water-jet trajectory, hardware limits, or physical actuation.
