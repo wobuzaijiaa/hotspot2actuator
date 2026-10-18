@@ -1,119 +1,66 @@
-# Spatially-Aware Hotspot-to-Actuator Targeting
+# Spatial Target Planning
 
-An interactive browser demonstration of how a manually selected synthetic hotspot in a camera view can be localized as a physical 3D target and translated into a Pan/Tilt target for a separately positioned fire monitor.
+A browser-based demo for exploring the geometric relationship between a camera, a terrain-surface target, and a fire monitor.
 
 ![Demo screenshot](screenshot.png)
 
-**Live demo:** [wobuzaijiaa.github.io/hotspot2actuator/demo](https://wobuzaijiaa.github.io/hotspot2actuator/demo/)
+**Live demo:** [Spatial Target Planning](https://wobuzaijiaa.github.io/hotspot2actuator/)
 
-> **Independent technical demonstration inspired by industrial spatial-computing and automated-actuation scenarios. All geometry, parameters, images, and data are synthetic. The implementation does not reproduce or disclose any customer system.**
+## Overview
 
----
+The demo models a camera and fire monitor in a shared world coordinate system. Users can select a target on the terrain, evaluate camera visibility and terrain clearance, and calculate the monitor's geometric aiming angles.
 
-## What this repository demonstrates
+It is intended for geometry exploration and validation, not operational fire detection or suppression.
 
-The demo focuses on the spatial targeting step between **image-based observation** and **actuator response**.
+## Core Features
 
-| Stage | Demonstrated here |
-|---|---|
-| Thermal monitoring | No — synthetic camera image |
-| Fire detection / filtering | No — hotspot selected manually |
-| Image target → physical 3D target | Yes |
-| 3D target → fire-monitor Pan/Tilt | Yes |
-| Fire monitor, suppression and control interfaces | No — Pan/Tilt are calculated and displayed, not executed |
+- **World and terrain:** Configurable scene bounds, built-in flat and synthetic terrain, heightmap input, and optional terrain plugins.
+- **Camera:** Configurable position, orientation, image resolution, field of view, and maximum range.
+- **Target selection:** Select a terrain-surface target in the camera view or directly in the 3D world view. Camera selection infers the target position from a viewing ray intersecting the modeled terrain.
+- **Monitor aiming:** Calculate pan, tilt, horizontal distance, 3D distance, and relative target height.
+- **Visualization:** Camera view, world view, camera elevation profile, and monitor elevation profile.
+- **Validation:** Check target domain and surface validity, camera field of view and range, camera and monitor line of sight, and monitor range.
+- **JSON export:** Save the current configuration, target position, geometric results, validation status, and modeling assumptions.
 
-The central idea is that a target identified in a camera image is not yet a physical actuator target. It must first be interpreted within a shared spatial reference and then expressed relative to the actuator.
+## Typical Workflow
 
-The demonstration makes this transformation visible and interactive.
+1. Configure the world bounds and terrain.
+2. Set the camera position, orientation, image parameters, and range.
+3. Set the fire monitor position and range.
+4. Select a target in the camera or world view.
+5. Review target validity, visibility, range, terrain clearance, and monitor aiming geometry.
+6. Export the results as JSON if needed.
 
----
+Results are recalculated when relevant camera parameters or terrain settings change. Camera-selected targets are re-localized against the active terrain.
 
-## The spatial problem
+## Coordinate System
 
-A camera and a fire monitor may be installed at different positions and orientations. A selected image point therefore cannot be sent directly to the monitor.
+The demo uses a shared Cartesian world coordinate system:
 
-**A pixel defines a viewing ray, not a 3D point.** The camera shows in which direction a hotspot lies, not how far away it is. A physical target requires additional spatial information about the environment.
+- **X, Y:** Horizontal position.
+- **Z:** Elevation.
+- **Units:** Meters for positions, bounds, and distances; degrees for camera yaw/pitch and monitor pan/tilt.
+- **Terrain:** A heightfield represented by elevation as a function of horizontal position, $Z = H(X,Y)$.
+- **Monitor angles:** Pan is referenced to the positive world X direction; tilt is measured relative to the horizontal plane.
 
-In this demo, the hotspot is assumed to lie on the ground, and the target sits at an entered height above that ground point. Once the target is established in 3D, its position can be related to the monitor's own coordinate frame and converted into the corresponding Pan/Tilt direction.
+Camera and monitor positions are defined in world coordinates. The current model supports surface targets only; target-height offsets above the terrain are not implemented.
 
----
+## Validation and Limitations
 
-## Using the demo
+The status panel reports individual checks because successful target localization does not guarantee visibility or reachability. A target may be localized but outside the camera field of view, beyond a range limit, or blocked by terrain.
 
-Open the HTML file in a modern browser. No installation or server is required.
+Important limitations:
 
-Select a point in the synthetic camera view to see the corresponding spatial target and Pan/Tilt result update. Camera and monitor positions, camera orientation and the target height can be changed in the side panel.
+- Camera-based localization uses a viewing-ray intersection with modeled terrain; it does not measure depth from a real camera image.
+- Line-of-sight checks sample terrain clearance only. Buildings, vegetation, equipment, and other arbitrary 3D obstacles are not modeled, and narrow obstructions may be missed.
+- Monitor pan and tilt are geometric results, not physical actuation commands. Hardware constraints and real-world performance are not fully modeled.
+- Heightmaps represent surface elevation, not photographic texture or semantic scene content. Valid target locations depend on terrain coverage and world bounds.
+- The simplified scene is not a full 3D facility model or a substitute for site validation.
 
-The demo reports when no target can be localized, when the monitor has no Pan/Tilt solution, and when the target falls outside the camera's field of view.
+Use the demo to explore geometric relationships, not to make operational or safety-critical decisions.
 
-It is a single HTML file written in plain HTML, CSS and JavaScript. It loads Tailwind CSS and web fonts from CDNs, so an internet connection is needed.
+## Running the Demo
 
----
+Open `index.html` in a modern browser. No build step is required. Some styling and fonts are loaded from external CDNs and may require an internet connection.
 
-## Spatial Reference
-
-The demonstration uses a common world coordinate system to relate the camera, target environment and fire monitor.
-
-In a physical installation, a spatial reference could be established by surveying or 3D scanning the site. Identifiable calibration targets can be placed at selected locations before scanning so that their measured positions can be identified in the resulting 3D model. These reference points provide known spatial coordinates for subsequent calibration and validation.
-
-In this demonstration, the spatial reference is represented by predefined synthetic positions and orientations rather than real survey or scan data.
-
-## Calibration Concept
-
-The key engineering challenge is not only acquiring 3D geometry, but establishing and validating the pose of each sensing and actuation device within the common spatial reference.
-
-A possible physical calibration workflow is:
-
-| Stage | Purpose |
-|---|---|
-| Reference target placement | Place identifiable calibration targets at selected physical locations |
-| 3D scanning | Capture the site and calibration targets in a common spatial model |
-| Reference extraction | Identify the calibration targets and their measured 3D coordinates |
-| Camera pose calibration | Match observed target features with their 3D coordinates to estimate the camera's extrinsic pose |
-| Actuator pose/axis calibration | Establish the actuator reference frame and pointing-axis relationship relative to the common spatial reference |
-| Calibration validation | Use independent reference points and residual errors to verify the resulting spatial transformations |
-| Runtime use | Apply the calibrated transformations to convert image-based targets into actuator coordinates |
-
-The resulting calibration establishes the spatial relationship between the sensing system, the scene and the actuator. The demonstration uses predefined synthetic poses instead of performing this physical calibration process.
-
-The key principle is that **3D scanning provides the spatial geometry, while calibration establishes and validates the pose relationships that connect perception to physical action**.
-
----
-
-## Production context
-
-The demonstration represents one part of a broader industrial fire-safety problem.
-
-In applications such as Material Recovery Facilities, large quantities of combustible material may require continuous monitoring and automated intervention. This involves distinct technical challenges:
-
-| Dimension | Question |
-|---|---|
-| **Detection** | Can a potential fire condition be identified while controlling false alarms? |
-| **Spatial targeting** | Can the identified target be localized and converted into an executable actuator direction? |
-
-**Detection establishes what requires intervention; spatial targeting establishes where the actuator should respond.**
-
-This repository addresses the second problem only.
-
-It demonstrates how information originating in image space can be connected to a physical target and subsequently to an actuator direction.
-
----
-
-## Scope and limitations
-
-- All images, geometry, positions, measurements and target data are synthetic.
-- The hotspot is selected manually; thermal sensing, fire detection and filtering are not implemented.
-- The target is assumed to lie on the ground, at an entered height above the selected point. The camera does not measure depth, so a wrong assumption gives a wrong target.
-- Camera calibration, lens distortion and real-world measurement uncertainty are not modeled.
-- No fire monitor, suppression system, hardware or control interface is involved; Pan/Tilt are calculated and displayed only.
-- The demonstration is not a validated model of a real installation and does not implement operational safety logic.
-
-These limitations define the scope of the demonstration rather than the scope of a production system.
-
----
-
-## Related documentation
-
-| Document | Purpose |
-|---|---|
-| [`geometry-model.md`](geometry-model.md) | Coordinate systems, camera-to-world transformation, target-plane intersection, monitor-frame transformation and Pan/Tilt calculation |
+For detailed geometric definitions and equations, consult the accompanying geometry-model reference.
