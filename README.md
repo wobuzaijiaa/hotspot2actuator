@@ -4,7 +4,7 @@ A browser-based demo for exploring the geometric relationship between a camera, 
 
 ![Demo screenshot](screenshot.png)
 
-**Live demo:** [Spatial Target Planning](https://wobuzaijiaa.github.io/hotspot2actuator/)
+**Live demo:** [Spatial Target Planning](https://wobuzaijiaa.github.io/hotspot2actuator/demo)
 
 ## Overview
 
